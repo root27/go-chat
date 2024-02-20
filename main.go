@@ -79,6 +79,20 @@ func client(conn net.Conn, messages chan Message) {
 			return
 		}
 
+		if string(buf[0:n]) == "exit" {
+
+			client.conn.Close()
+
+			messages <- Message{
+				From: client,
+				Type: Disconnected,
+				Text: "",
+			}
+
+			return
+
+		}
+
 		msg := Message{
 			Text: string(buf[0:n]),
 			From: client,
@@ -113,9 +127,9 @@ func server(messages chan Message) {
 
 		case NewMessage:
 
-			for _, client := range clients {
+			log.Printf("Message from %s: %s", msg.From.conn.RemoteAddr(), msg.Text)
 
-				log.Printf("Message from %s: %s", msg.From.conn.RemoteAddr(), msg.Text)
+			for _, client := range clients {
 
 				if client.conn.RemoteAddr().String() != msg.From.conn.RemoteAddr().String() {
 					_, err := client.conn.Write([]byte(msg.Text))
