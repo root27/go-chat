@@ -3,8 +3,25 @@ package main
 import (
 	"log"
 	"net"
-	"os"
 )
+
+type MessageType int
+
+const (
+	Connected MessageType = iota + 1
+	Disconnected
+	NewMessage
+)
+
+type Client struct {
+	conn net.Conn
+}
+
+type Message struct {
+	Text string
+	From Client
+	Type MessageType
+}
 
 func main() {
 
@@ -12,41 +29,108 @@ func main() {
 
 	if err != nil {
 		log.Fatalf("Error tcp connection: %v", err)
-
-		os.Exit(1)
 	}
 
 	log.Printf("Server is listening on %s", listener.Addr())
+
+	messages := make(chan Message)
+
+	go server(messages)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Fatalf("Error accepting connection: %s, %v", conn.RemoteAddr(), err)
+			continue
 		}
-		go handleConnection(conn)
+
+		messages <- Message{
+			From: Client{conn},
+			Type: Connected,
+			Text: "",
+		}
+
+		go client(conn, messages)
 	}
 
 }
 
-func handleConnection(conn net.Conn) {
+func client(conn net.Conn, messages chan Message) {
 
-	defer conn.Close()
+	client := Client{conn}
 
-	message := []byte("Hello from server\n")
+	for {
+		buf := make([]byte, 1024)
+		n, err := conn.Read(buf)
+		if err != nil {
 
-	n, err := conn.Write(message)
+			client.conn.Close()
 
-	if err != nil {
-		log.Fatalf("Error from server: %v", err)
+			log.Printf("Error reading from connection: %v", err)
 
-		return
+			msg := Message{
+				From: client,
+				Type: Disconnected,
+				Text: "",
+			}
 
+			messages <- msg
+
+			return
+		}
+
+		msg := Message{
+			Text: string(buf[0:n]),
+			From: client,
+			Type: NewMessage,
+		}
+
+		messages <- msg
 	}
 
-	if n != len(message) {
-		log.Fatalf("Error for sending all message: %v", err)
+}
 
-		return
+func server(messages chan Message) {
+
+	clients := make(map[string]*Client)
+
+	for {
+		msg := <-messages
+
+		switch msg.Type {
+
+		case Connected:
+
+			clients[msg.From.conn.RemoteAddr().String()] = &msg.From
+
+			log.Printf("Client connected: %s", msg.From.conn.RemoteAddr())
+
+		case Disconnected:
+
+			log.Printf("Client disconnected: %s", msg.From.conn.RemoteAddr())
+
+			delete(clients, msg.From.conn.RemoteAddr().String())
+
+		case NewMessage:
+
+			for _, client := range clients {
+
+				log.Printf("Message from %s: %s", msg.From.conn.RemoteAddr(), msg.Text)
+
+				if client.conn.RemoteAddr().String() != msg.From.conn.RemoteAddr().String() {
+					_, err := client.conn.Write([]byte(msg.Text))
+					if err != nil {
+						log.Printf("Error writing to connection: %v", err)
+
+						client.conn.Close()
+
+					}
+
+				}
+
+			}
+
+		}
+
 	}
-
 }
