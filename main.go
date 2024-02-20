@@ -80,7 +80,9 @@ func client(conn net.Conn, messages chan Message) {
 			return
 		}
 
-		if string(buf[0:n]) == "exit" {
+		text := string(buf[0:n])
+
+		if text == "exit" {
 
 			conn.Close()
 
@@ -90,17 +92,17 @@ func client(conn net.Conn, messages chan Message) {
 				Text: "",
 			}
 
-			return
+		} else {
+
+			msg := Message{
+				Text: text,
+				From: conn,
+				Type: NewMessage,
+			}
+
+			messages <- msg
 
 		}
-
-		msg := Message{
-			Text: string(buf[0:n]),
-			From: conn,
-			Type: NewMessage,
-		}
-
-		messages <- msg
 	}
 
 }
