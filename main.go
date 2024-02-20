@@ -19,7 +19,7 @@ type Client struct {
 
 type Message struct {
 	Text string
-	From Client
+	From net.Conn
 	Type MessageType
 }
 
@@ -45,7 +45,7 @@ func main() {
 		}
 
 		messages <- Message{
-			From: Client{conn},
+			From: conn,
 			Type: Connected,
 			Text: "",
 		}
@@ -57,19 +57,20 @@ func main() {
 
 func client(conn net.Conn, messages chan Message) {
 
-	client := Client{conn}
+	buf := make([]byte, 1024)
 
 	for {
-		buf := make([]byte, 1024)
+
 		n, err := conn.Read(buf)
+
 		if err != nil {
 
-			client.conn.Close()
+			conn.Close()
 
 			log.Printf("Error reading from connection: %v", err)
 
 			msg := Message{
-				From: client,
+				From: conn,
 				Type: Disconnected,
 				Text: "",
 			}
@@ -81,10 +82,10 @@ func client(conn net.Conn, messages chan Message) {
 
 		if string(buf[0:n]) == "exit" {
 
-			client.conn.Close()
+			conn.Close()
 
 			messages <- Message{
-				From: client,
+				From: conn,
 				Type: Disconnected,
 				Text: "",
 			}
@@ -95,7 +96,7 @@ func client(conn net.Conn, messages chan Message) {
 
 		msg := Message{
 			Text: string(buf[0:n]),
-			From: client,
+			From: conn,
 			Type: NewMessage,
 		}
 
@@ -106,7 +107,7 @@ func client(conn net.Conn, messages chan Message) {
 
 func server(messages chan Message) {
 
-	clients := make(map[string]*Client)
+	clients := map[string]*Client{}
 
 	for {
 		msg := <-messages
@@ -115,23 +116,25 @@ func server(messages chan Message) {
 
 		case Connected:
 
-			clients[msg.From.conn.RemoteAddr().String()] = &msg.From
+			clients[msg.From.RemoteAddr().String()] = &Client{
+				conn: msg.From,
+			}
 
-			log.Printf("Client connected: %s", msg.From.conn.RemoteAddr())
+			log.Printf("Client connected: %s", msg.From.RemoteAddr())
 
 		case Disconnected:
 
-			log.Printf("Client disconnected: %s", msg.From.conn.RemoteAddr())
+			log.Printf("Client disconnected: %s", msg.From.RemoteAddr())
 
-			delete(clients, msg.From.conn.RemoteAddr().String())
+			delete(clients, msg.From.RemoteAddr().String())
 
 		case NewMessage:
 
-			log.Printf("Message from %s: %s", msg.From.conn.RemoteAddr(), msg.Text)
+			log.Printf("Message from %s: %s", msg.From.RemoteAddr(), msg.Text)
 
 			for _, client := range clients {
 
-				if client.conn.RemoteAddr().String() != msg.From.conn.RemoteAddr().String() {
+				if client.conn.RemoteAddr().String() != msg.From.RemoteAddr().String() {
 					_, err := client.conn.Write([]byte(msg.Text))
 					if err != nil {
 						log.Printf("Error writing to connection: %v", err)
