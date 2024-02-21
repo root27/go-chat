@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"time"
+	"unicode/utf8"
 )
 
 type MessageType int
@@ -17,6 +19,7 @@ const (
 type Client struct {
 	conn         net.Conn
 	last_message time.Time
+	strokes      int
 }
 
 type Message struct {
@@ -24,6 +27,14 @@ type Message struct {
 	From net.Conn
 	Type MessageType
 }
+
+const (
+	timeLimit = 10 * 60.0
+
+	strokeLimit = 10
+
+	Rate = 1.0
+)
 
 func main() {
 
@@ -124,11 +135,40 @@ func server(messages chan Message) {
 
 		case Connected:
 
-			clients[msg.From.RemoteAddr().String()] = &Client{
-				conn: msg.From,
+			addr := msg.From.RemoteAddr().(*net.TCPAddr)
+
+			bannedAt, banned := bans_list[addr.IP.String()]
+
+			now := time.Now()
+
+			if banned {
+
+				if now.Sub(bannedAt).Seconds() >= timeLimit {
+
+					delete(bans_list, addr.IP.String())
+
+					banned = false
+
+				}
+
 			}
 
-			log.Printf("Client connected: %s", msg.From.RemoteAddr())
+			if !banned {
+
+				log.Printf("New client connected: %s", msg.From.RemoteAddr())
+
+				clients[msg.From.RemoteAddr().String()] = &Client{
+
+					conn: msg.From,
+
+					last_message: time.Now(),
+				}
+			} else {
+
+				msg.From.Write([]byte(fmt.Sprintf("You are banned: %f seconds left", timeLimit-now.Sub(bannedAt).Seconds())))
+
+				msg.From.Close()
+			}
 
 		case Disconnected:
 
@@ -138,33 +178,65 @@ func server(messages chan Message) {
 
 		case NewMessage:
 
-			log.Printf("Message from %s: %s", msg.From.RemoteAddr(), msg.Text)
-
 			author_addr := msg.From.RemoteAddr().(*net.TCPAddr)
 
 			author := clients[author_addr.String()]
 
 			now := time.Now()
 
-			for _, client := range clients {
+			if now.Sub(author.last_message).Seconds() >= Rate {
 
-				if client.conn.RemoteAddr().String() != msg.From.RemoteAddr().String() {
+				if utf8.ValidString(msg.Text) {
 
-					_, err := client.conn.Write([]byte(msg.Text))
+					author.last_message = now
 
-					if err != nil {
+					author.strokes = 0
 
-						log.Printf("Error writing to connection: %v", err)
+					log.Printf("Client %s sent a message: %s", msg.From.RemoteAddr(), msg.Text)
 
-						client.conn.Close()
+					for _, client := range clients {
+
+						if client.conn.RemoteAddr().String() != msg.From.RemoteAddr().String() {
+
+							client.conn.Write([]byte(msg.Text))
+
+						}
 
 					}
+
+				} else {
+
+					author.strokes += 1
+
+					if author.strokes > strokeLimit {
+
+						bans_list[author_addr.IP.String()] = now
+
+						author.conn.Write([]byte("You are banned for 10 seconds"))
+
+						author.conn.Close()
+
+					}
+
+				}
+
+			} else {
+
+				author.strokes += 1
+
+				if author.strokes > strokeLimit {
+
+					bans_list[author_addr.IP.String()] = now
+
+					author.conn.Write([]byte("You are banned for 10 seconds"))
+
+					author.conn.Close()
 
 				}
 
 			}
 
 		}
-
 	}
+
 }
