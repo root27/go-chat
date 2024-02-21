@@ -10,5 +10,7 @@ go run main.go
 
 ```
 
+## LICENSE
 
+[MIT](LICENSE)
 
