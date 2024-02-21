@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"time"
 )
 
 type MessageType int
@@ -14,7 +15,8 @@ const (
 )
 
 type Client struct {
-	conn net.Conn
+	conn         net.Conn
+	last_message time.Time
 }
 
 type Message struct {
@@ -80,29 +82,31 @@ func client(conn net.Conn, messages chan Message) {
 			return
 		}
 
-		text := string(buf[0:n])
+		text := string(buf[:n])
 
-		if text == "exit" {
+		if string(buf[:n]) == "exit\r\n" {
 
 			conn.Close()
 
-			messages <- Message{
+			msg := Message{
 				From: conn,
 				Type: Disconnected,
 				Text: "",
 			}
 
-		} else {
-
-			msg := Message{
-				Text: text,
-				From: conn,
-				Type: NewMessage,
-			}
-
 			messages <- msg
 
+			return
 		}
+
+		msg := Message{
+			Text: text,
+			From: conn,
+			Type: NewMessage,
+		}
+
+		messages <- msg
+
 	}
 
 }
@@ -110,6 +114,8 @@ func client(conn net.Conn, messages chan Message) {
 func server(messages chan Message) {
 
 	clients := map[string]*Client{}
+
+	bans_list := map[string]time.Time{}
 
 	for {
 		msg := <-messages
@@ -134,11 +140,20 @@ func server(messages chan Message) {
 
 			log.Printf("Message from %s: %s", msg.From.RemoteAddr(), msg.Text)
 
+			author_addr := msg.From.RemoteAddr().(*net.TCPAddr)
+
+			author := clients[author_addr.String()]
+
+			now := time.Now()
+
 			for _, client := range clients {
 
 				if client.conn.RemoteAddr().String() != msg.From.RemoteAddr().String() {
+
 					_, err := client.conn.Write([]byte(msg.Text))
+
 					if err != nil {
+
 						log.Printf("Error writing to connection: %v", err)
 
 						client.conn.Close()
