@@ -165,7 +165,7 @@ func server(messages chan Message) {
 				}
 			} else {
 
-				msg.From.Write([]byte(fmt.Sprintf("You are banned: %f seconds left", timeLimit-now.Sub(bannedAt).Seconds())))
+				msg.From.Write([]byte(fmt.Sprintf("You are banned: %f seconds left\n", timeLimit-now.Sub(bannedAt).Seconds())))
 
 				msg.From.Close()
 			}
@@ -212,7 +212,7 @@ func server(messages chan Message) {
 
 						bans_list[author_addr.IP.String()] = now
 
-						author.conn.Write([]byte("You are banned for 10 seconds"))
+						author.conn.Write([]byte("You are banned !!!"))
 
 						author.conn.Close()
 
@@ -228,7 +228,7 @@ func server(messages chan Message) {
 
 					bans_list[author_addr.IP.String()] = now
 
-					author.conn.Write([]byte("You are banned for 10 seconds"))
+					author.conn.Write([]byte("You are banned !!!"))
 
 					author.conn.Close()
 
