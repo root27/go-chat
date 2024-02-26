@@ -2,6 +2,8 @@
 
 A very simple chat app using tcp in Go
 
+---
+
 ## Quick Start
 
 ```bash
@@ -9,6 +11,8 @@ A very simple chat app using tcp in Go
 go run main.go
 
 ```
+
+---
 
 ## LICENSE
 
